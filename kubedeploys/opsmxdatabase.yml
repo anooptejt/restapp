@@ -26,10 +26,10 @@ kind: Service
 metadata:
   name: db-opsmx
 spec:
-  type: ClusterIP
+  type: NodePort
   ports:
    - name: postgres
-     nodePort: 35432
+     nodePort: 32767
      port: 5432
      protocol: TCP
      targetPort: 5432
