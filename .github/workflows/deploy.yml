@@ -1,0 +1,60 @@
+name: Build restapp
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+env:
+  ARTIFACT_ID: restapp
+  VERSION: 0.1.0
+  GROUP_ID: org.springframework
+jobs:
+  build:
+    name: Maven Build
+    if: "vars.ACTIVE_CLOUD == 'azure'"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Log in to Azure
+        uses: azure/login@v2
+        with:
+          creds: "${{ secrets.AZURE_CREDENTIALS }}"
+      - name: Log in to Azure Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: "${{ secrets.ACR_LOGIN_SERVER }}"
+          username: "${{ secrets.ACR_USERNAME }}"
+          password: "${{ secrets.ACR_PASSWORD }}"
+      - name: Build and push Docker image
+        env:
+          ACR_LOGIN_SERVER: "${{ secrets.ACR_LOGIN_SERVER }}"
+          ACR_REPOSITORY: restapp
+        run: |
+          SHORT_SHA=${GITHUB_SHA::8}
+          docker build -t $ACR_LOGIN_SERVER/$ACR_REPOSITORY:latest -t $ACR_LOGIN_SERVER/$ACR_REPOSITORY:$SHORT_SHA -t $ACR_LOGIN_SERVER/$ACR_REPOSITORY:${{ github.run_number }} -t $ACR_LOGIN_SERVER/$ACR_REPOSITORY:${{ github.sha }} .
+          docker push $ACR_LOGIN_SERVER/$ACR_REPOSITORY:latest
+          docker push $ACR_LOGIN_SERVER/$ACR_REPOSITORY:$SHORT_SHA
+          docker push $ACR_LOGIN_SERVER/$ACR_REPOSITORY:${{ github.run_number }}
+          docker push $ACR_LOGIN_SERVER/$ACR_REPOSITORY:${{ github.sha }}
+  deploy:
+    name: Deploy to Azure Container Apps
+    if: "vars.ACTIVE_CLOUD == 'azure'"
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Log in to Azure
+        uses: azure/login@v2
+        with:
+          creds: "${{ secrets.AZURE_CREDENTIALS }}"
+      - name: Deploy new image to Container App
+        run: |
+          az containerapp update \
+            --name "restapp-dev-app" \
+            --resource-group "restapp-dev-rg" \
+            --image "${{ secrets.ACR_LOGIN_SERVER }}/restapp:${{ github.sha }}"
